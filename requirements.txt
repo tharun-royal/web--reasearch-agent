@@ -1,3 +1,5 @@
-google-genai>=1.27.0
-tavily-python>=0.7.10
-python-dotenv>=1.0.1
+flask==3.1.1
+gunicorn==23.0.0
+google-genai==1.27.0
+tavily-python==0.7.10
+python-dotenv==1.0.1
