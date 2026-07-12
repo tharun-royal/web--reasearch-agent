@@ -2,12 +2,11 @@ title: web-research-agent
 description: Searches the web for a topic and synthesizes a structured research report
 author: ashishpatel26
 language: python
-framework: langgraph
+framework: google-genai
 tags:
   - research
   - web-search
-  - rag
-  - langgraph
+  - gemini
 industry: general
 difficulty: intermediate
 llm: gemini-2.5-flash
