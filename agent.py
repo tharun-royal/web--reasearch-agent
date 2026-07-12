@@ -116,9 +116,16 @@ overflow:auto;
 
 async function research(){
 
-const query=document.getElementById("query").value;
+const query=document.getElementById("query").value.trim();
 
-document.getElementById("result").innerHTML="⏳ Researching...";
+const resultEl=document.getElementById("result");
+
+if(!query){
+resultEl.textContent="Please enter a topic.";
+return;
+}
+
+resultEl.textContent="⏳ Researching...";
 
 try{
 
@@ -138,13 +145,13 @@ query:query
 
 const data=await response.json();
 
-document.getElementById("result").innerHTML=
-data.report || data.error;
+// Use textContent (not innerHTML) to avoid rendering
+// untrusted text as HTML.
+resultEl.textContent=data.report || data.error || "No response received.";
 
 }catch(err){
 
-document.getElementById("result").innerHTML=
-"Error : "+err;
+resultEl.textContent="Error: "+err;
 
 }
 
@@ -161,20 +168,26 @@ document.getElementById("result").innerHTML=
 @app.route("/research", methods=["POST"])
 def research():
 
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
 
-    query = data.get("query")
+    query = (data.get("query") or "").strip()
 
     if not query:
-        return jsonify({"error": "Please enter a topic."})
+        return jsonify({"error": "Please enter a topic."}), 400
 
-    search = tavily.search(
-        query=query,
-        search_depth="advanced",
-        max_results=5
-    )
+    try:
+        search = tavily.search(
+            query=query,
+            search_depth="advanced",
+            max_results=5
+        )
+    except Exception as e:
+        return jsonify({"error": f"Search failed: {e}"}), 502
 
     results = search.get("results", [])
+
+    if not results:
+        return jsonify({"error": "No search results found for that topic."}), 404
 
     search_text = ""
 
@@ -208,23 +221,26 @@ Generate:
 """
 
     try:
-
         response = gemini.models.generate_content(
-    model="gemini-2.5-flash-lite",
-    contents=prompt
+            model="gemini-2.5-flash",
+            contents=prompt
         )
-        )
-        )
+
+        report_text = getattr(response, "text", None)
+
+        if not report_text:
+            return jsonify({
+                "error": "Gemini returned no usable content (possibly blocked by safety filters)."
+            }), 502
 
         return jsonify({
-            "report": response.text
+            "report": report_text
         })
 
     except Exception as e:
-
         return jsonify({
             "error": str(e)
-        })
+        }), 502
 
 
 if __name__ == "__main__":
