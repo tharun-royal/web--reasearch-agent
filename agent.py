@@ -1,90 +1,95 @@
-import argparse
 import os
 
+from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from tavily import TavilyClient
 from google import genai
 
-# Load environment variables
 load_dotenv()
 
+app = Flask(__name__)
 
-def search_web(query):
-    """Search the web using Tavily."""
-    tavily = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
-    response = tavily.search(
+if not GOOGLE_API_KEY:
+    raise ValueError("GOOGLE_API_KEY is missing")
+
+if not TAVILY_API_KEY:
+    raise ValueError("TAVILY_API_KEY is missing")
+
+gemini = genai.Client(api_key=GOOGLE_API_KEY)
+tavily = TavilyClient(api_key=TAVILY_API_KEY)
+
+
+@app.route("/")
+def home():
+    return jsonify({
+        "message": "Gemini Web Research Agent is Running!"
+    })
+
+
+@app.route("/research", methods=["POST"])
+def research():
+
+    data = request.get_json()
+
+    query = data.get("query")
+
+    if not query:
+        return jsonify({
+            "error": "Query is required"
+        }), 400
+
+    search = tavily.search(
         query=query,
         search_depth="advanced",
-        max_results=5,
+        max_results=5
     )
 
-    return response.get("results", [])
+    results = search.get("results", [])
 
-
-def generate_report(query, results):
-    """Generate a research report using Gemini."""
-    client = genai.Client(
-        api_key=os.getenv("GOOGLE_API_KEY")
-    )
-
-    search_text = ""
+    text = ""
 
     for r in results:
-        search_text += (
-            f"Title: {r.get('title', '')}\n"
-            f"URL: {r.get('url', '')}\n"
-            f"Content: {r.get('content', '')}\n\n"
-        )
+        text += f"""
+Title: {r.get('title')}
+
+URL: {r.get('url')}
+
+Content:
+{r.get('content')}
+
+"""
 
     prompt = f"""
-You are a professional research analyst.
+You are an expert research analyst.
 
 Research Topic:
 {query}
 
 Search Results:
-{search_text}
+{text}
 
-Create a structured report with:
+Generate:
 
 1. Summary
-2. Key Findings (bullet points)
+
+2. Key Findings
+
 3. Sources
 """
 
-    response = client.models.generate_content(
+    response = gemini.models.generate_content(
         model="gemini-2.5-flash",
-        contents=prompt,
+        contents=prompt
     )
 
-    return response.text
-
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Web Research Agent"
-    )
-
-    parser.add_argument(
-        "--query",
-        default="Latest AI Agents",
-        help="Research topic",
-    )
-
-    args = parser.parse_args()
-
-    print(f"\n🔍 Researching: {args.query}\n")
-
-    results = search_web(args.query)
-
-    report = generate_report(args.query, results)
-
-    print("=" * 60)
-    print("📄 RESEARCH REPORT")
-    print("=" * 60)
-    print(report)
+    return jsonify({
+        "query": query,
+        "report": response.text
+    })
 
 
 if __name__ == "__main__":
-    main()
+    app.run(host="0.0.0.0", port=10000) 
