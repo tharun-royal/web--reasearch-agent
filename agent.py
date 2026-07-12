@@ -12,6 +12,12 @@ app = Flask(__name__)
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
+if not GOOGLE_API_KEY:
+    raise ValueError("GOOGLE_API_KEY is missing")
+
+if not TAVILY_API_KEY:
+    raise ValueError("TAVILY_API_KEY is missing")
+
 gemini = genai.Client(api_key=GOOGLE_API_KEY)
 tavily = TavilyClient(api_key=TAVILY_API_KEY)
 
@@ -27,36 +33,61 @@ def home():
 <style>
 
 body{
-font-family:Arial;
-background:#f5f5f5;
-padding:40px;
+margin:0;
+font-family:Arial,sans-serif;
+background:linear-gradient(135deg,#4f46e5,#06b6d4);
+display:flex;
+justify-content:center;
+align-items:center;
+height:100vh;
 }
 
 .container{
 background:white;
-padding:20px;
-border-radius:10px;
+padding:30px;
+border-radius:15px;
+width:90%;
 max-width:900px;
-margin:auto;
+box-shadow:0 10px 30px rgba(0,0,0,.2);
+text-align:center;
+}
+
+h1{
+color:#4f46e5;
 }
 
 input{
 width:80%;
-padding:10px;
+padding:12px;
 font-size:16px;
+border-radius:8px;
+border:1px solid #ccc;
 }
 
 button{
-padding:10px 20px;
-font-size:16px;
+padding:12px 20px;
+margin-top:15px;
+background:#4f46e5;
+color:white;
+border:none;
+border-radius:8px;
 cursor:pointer;
+font-size:16px;
+}
+
+button:hover{
+background:#3730a3;
 }
 
 pre{
-background:#eee;
-padding:20px;
 margin-top:20px;
+background:#f4f4f4;
+padding:20px;
+border-radius:10px;
+text-align:left;
 white-space:pre-wrap;
+max-height:400px;
+overflow:auto;
 }
 
 </style>
@@ -67,19 +98,17 @@ white-space:pre-wrap;
 
 <div class="container">
 
-<h2>🔍 Gemini Web Research Agent</h2>
+<h1>🔍 Gemini Web Research Agent</h1>
 
-<input
-id="query"
-placeholder="Enter Research Topic">
+<p>Search any topic using Gemini AI + Tavily</p>
 
-<button onclick="research()">
+<input id="query" placeholder="Enter research topic">
 
-Search
+<br>
 
-</button>
+<button onclick="research()">Search</button>
 
-<pre id="result"></pre>
+<pre id="result">Your report will appear here...</pre>
 
 </div>
 
@@ -89,7 +118,9 @@ async function research(){
 
 const query=document.getElementById("query").value;
 
-document.getElementById("result").innerHTML="Searching...";
+document.getElementById("result").innerHTML="⏳ Researching...";
+
+try{
 
 const response=await fetch("/research",{
 
@@ -107,7 +138,15 @@ query:query
 
 const data=await response.json();
 
-document.getElementById("result").innerHTML=data.report;
+document.getElementById("result").innerHTML=
+data.report || data.error;
+
+}catch(err){
+
+document.getElementById("result").innerHTML=
+"Error : "+err;
+
+}
 
 }
 
@@ -116,36 +155,31 @@ document.getElementById("result").innerHTML=data.report;
 </body>
 
 </html>
-
 """
 
 
 @app.route("/research", methods=["POST"])
 def research():
 
-    data=request.get_json()
+    data = request.get_json()
 
-    query=data.get("query")
+    query = data.get("query")
 
     if not query:
-        return jsonify({
-            "report":"Please enter a topic."
-        })
+        return jsonify({"error": "Please enter a topic."})
 
-    search=tavily.search(
+    search = tavily.search(
         query=query,
         search_depth="advanced",
         max_results=5
     )
 
-    results=search.get("results",[])
+    results = search.get("results", [])
 
-    text=""
+    search_text = ""
 
     for r in results:
-
-        text+=f"""
-
+        search_text += f"""
 Title: {r.get('title')}
 
 URL: {r.get('url')}
@@ -155,15 +189,14 @@ Content:
 
 """
 
-    prompt=f"""
+    prompt = f"""
+You are an expert research analyst.
 
 Research Topic:
-
 {query}
 
 Search Results:
-
-{text}
+{search_text}
 
 Generate:
 
@@ -172,18 +205,25 @@ Generate:
 2. Key Findings
 
 3. Sources
-
 """
 
-    response=gemini.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt
-    )
+    try:
 
-    return jsonify({
-        "report":response.text
-    })
+        response = gemini.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt
+        )
+
+        return jsonify({
+            "report": response.text
+        })
+
+    except Exception as e:
+
+        return jsonify({
+            "error": str(e)
+        })
 
 
-if __name__=="__main__":
-    app.run(host="0.0.0.0",port=10000)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
