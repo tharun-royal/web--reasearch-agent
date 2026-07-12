@@ -11,5 +11,5 @@ tags:
 industry: general
 difficulty: intermediate
 llm: gemini-2.5-flash
-entrypoint: app.py
+entrypoint: agent.py
 requirements: requirements.txt
