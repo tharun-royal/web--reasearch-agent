@@ -210,8 +210,10 @@ Generate:
     try:
 
         response = gemini.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt
+    model="gemini-2.5-flash-lite",
+    contents=prompt
+        )
+        )
         )
 
         return jsonify({
