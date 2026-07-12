@@ -1,14 +1,15 @@
-title: web-research-agent
-description: Searches the web for a topic and synthesizes a structured research report
-author: ashishpatel26
+title: Gemini Web Research Agent
+description: AI-powered web research agent using Gemini and Tavily Search
+author: Tharun 
 language: python
-framework: google-genai
+framework: flask
 tags:
   - research
   - web-search
   - gemini
+  - tavily
 industry: general
 difficulty: intermediate
 llm: gemini-2.5-flash
-entrypoint: agent.py
+entrypoint: app.py
 requirements: requirements.txt
