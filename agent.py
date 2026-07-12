@@ -6,8 +6,13 @@ from flask import Flask, request, jsonify, send_file
 from dotenv import load_dotenv
 from tavily import TavilyClient
 from google import genai
-from fpdf import FPDF
 import os
+
+try:
+    from fpdf import FPDF
+    FPDF_AVAILABLE = True
+except ImportError:
+    FPDF_AVAILABLE = False
 
 load_dotenv()
 
@@ -46,7 +51,7 @@ def _sanitize_pdf_text(text: str) -> str:
     return text.encode("latin-1", "replace").decode("latin-1")
 
 
-def build_pdf(query: str, report_text: str) -> bytes:
+def build_pdf(query: str, report_text: str, sources: list) -> bytes:
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=18)
     pdf.add_page()
@@ -98,8 +103,36 @@ def build_pdf(query: str, report_text: str) -> bytes:
             text = re.sub(r"\*\*(.*?)\*\*", r"\1", line)
             pdf.multi_cell(0, 7, text)
 
+    # Sources — rendered from real search results, not model output
+    if sources:
+        pdf.ln(3)
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.set_text_color(79, 70, 229)
+        pdf.multi_cell(0, 8, "Sources")
+        pdf.set_text_color(20, 20, 20)
+        pdf.ln(1)
+
+        for i, s in enumerate(sources, 1):
+            title = _sanitize_pdf_text(s.get("title") or s.get("url", ""))
+            url = _sanitize_pdf_text(s.get("url", ""))
+
+            pdf.set_font("Helvetica", "B", 10.5)
+            pdf.multi_cell(0, 6.5, f"{i}. {title}")
+
+            pdf.set_font("Helvetica", "", 9.5)
+            pdf.set_text_color(37, 99, 235)
+            start_y = pdf.get_y()
+            pdf.multi_cell(0, 6, url, link=url)
+            pdf.set_text_color(20, 20, 20)
+            pdf.ln(0.5)
+
     output = pdf.output()
     return bytes(output)
+
+
+def _domain(url: str) -> str:
+    m = re.match(r"^https?://(?:www\.)?([^/]+)", url or "")
+    return m.group(1) if m else (url or "")
 
 
 # ---------------------------------------------------------------------------
@@ -128,6 +161,7 @@ def home():
   --bg-3:#24243e;
   --card:#ffffff;
   --text-dim:#6b7280;
+  --success:#16a34a;
 }
 
 body{
@@ -140,7 +174,7 @@ body{
   display:flex;
   justify-content:center;
   align-items:flex-start;
-  padding:48px 16px;
+  padding:48px 16px 90px;
 }
 
 @keyframes gradientShift{
@@ -234,6 +268,7 @@ button:disabled{
   opacity:0.6;
   cursor:not-allowed;
   transform:none;
+  box-shadow:none;
 }
 
 button.secondary{
@@ -245,11 +280,40 @@ button.secondary:hover{
   box-shadow:0 8px 20px rgba(0,0,0,0.08);
 }
 
+button.success{
+  background:linear-gradient(135deg,#16a34a,#22c55e);
+}
+
+.chips{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:14px;
+}
+
+.chip{
+  padding:7px 13px;
+  background:#f3f4f6;
+  border-radius:999px;
+  font-size:12.5px;
+  color:#4b5563;
+  cursor:pointer;
+  transition:background .12s ease, color .12s ease;
+  border:1px solid transparent;
+}
+
+.chip:hover{
+  background:#eef2ff;
+  color:var(--accent);
+  border-color:#e0e7ff;
+}
+
 .status{
   margin-top:18px;
   text-align:center;
   color:var(--text-dim);
   font-size:14px;
+  min-height:20px;
 }
 
 .spinner{
@@ -271,25 +335,48 @@ button.secondary:hover{
   margin-top:24px;
   border-top:1px solid #eee;
   padding-top:22px;
+  animation:fadeUp .35s ease;
+}
+
+@keyframes fadeUp{
+  from{opacity:0; transform:translateY(8px);}
+  to{opacity:1; transform:translateY(0);}
 }
 
 .result-toolbar{
   display:flex;
   justify-content:space-between;
-  align-items:center;
-  margin-bottom:16px;
+  align-items:flex-start;
+  margin-bottom:6px;
   flex-wrap:wrap;
   gap:10px;
+}
+
+.result-title-block strong{
+  display:block;
+  color:#111827;
+  font-size:15.5px;
+  margin-bottom:3px;
+}
+
+.result-meta{
+  color:#9ca3af;
+  font-size:12.5px;
 }
 
 .result-toolbar .actions{
   display:flex;
   gap:8px;
+  flex-wrap:wrap;
 }
 
 .result-toolbar button{
   padding:9px 16px;
   font-size:13px;
+}
+
+.result-content{
+  margin-top:16px;
 }
 
 .result-content h3{
@@ -321,6 +408,61 @@ button.secondary:hover{
   margin-bottom:4px;
 }
 
+.sources{
+  margin-top:8px;
+  padding-top:18px;
+  border-top:1px dashed #e5e7eb;
+}
+
+.sources h3{
+  color:var(--accent);
+  font-size:16px;
+  margin:0 0 10px 0;
+}
+
+.source-card{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  padding:11px 12px;
+  border-radius:12px;
+  text-decoration:none;
+  margin-bottom:8px;
+  transition:background .12s ease;
+}
+
+.source-card:hover{
+  background:#f9fafb;
+}
+
+.source-num{
+  flex-shrink:0;
+  width:22px;
+  height:22px;
+  border-radius:50%;
+  background:#eef2ff;
+  color:var(--accent);
+  font-size:11.5px;
+  font-weight:700;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  margin-top:1px;
+}
+
+.source-text strong{
+  display:block;
+  color:#1f2937;
+  font-size:13.5px;
+  font-weight:600;
+  margin-bottom:2px;
+}
+
+.source-text span{
+  color:#9ca3af;
+  font-size:12px;
+}
+
 .empty-hint{
   text-align:center;
   color:#9ca3af;
@@ -328,8 +470,38 @@ button.secondary:hover{
   margin-top:6px;
 }
 
+.toast-stack{
+  position:fixed;
+  bottom:22px;
+  right:22px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  z-index:999;
+}
+
+.toast{
+  background:#111827;
+  color:white;
+  padding:12px 18px;
+  border-radius:10px;
+  font-size:13.5px;
+  box-shadow:0 10px 30px rgba(0,0,0,0.3);
+  animation:toastIn .2s ease;
+  max-width:320px;
+}
+
+.toast.error{ background:#dc2626; }
+.toast.success{ background:#16a34a; }
+
+@keyframes toastIn{
+  from{opacity:0; transform:translateY(10px);}
+  to{opacity:1; transform:translateY(0);}
+}
+
 @media(max-width:520px){
   .search-row{flex-direction:column;}
+  .result-toolbar{flex-direction:column;}
 }
 
 </style>
@@ -357,27 +529,59 @@ button.secondary:hover{
       <button id="searchBtn" onclick="research()">Search</button>
     </div>
 
+    <div id="chips" class="chips">
+      <div class="chip" onclick="useChip(this)">impact of remote work on productivity</div>
+      <div class="chip" onclick="useChip(this)">latest advances in solid-state batteries</div>
+      <div class="chip" onclick="useChip(this)">global coffee supply chain trends</div>
+    </div>
+
     <div id="status" class="status"></div>
-    <div id="emptyHint" class="empty-hint">Try something like "impact of remote work on productivity"</div>
 
     <div id="result" class="result">
       <div class="result-toolbar">
-        <strong id="resultTitle" style="color:#111827;font-size:15px;"></strong>
+        <div class="result-title-block">
+          <strong id="resultTitle"></strong>
+          <span id="resultMeta" class="result-meta"></span>
+        </div>
         <div class="actions">
+          <button class="secondary" onclick="newSearch()">↺ New search</button>
           <button class="secondary" onclick="copyReport()">📋 Copy</button>
           <button onclick="downloadPdf()" id="pdfBtn">⬇ Download PDF</button>
         </div>
       </div>
       <div id="resultContent" class="result-content"></div>
+
+      <div id="sourcesBlock" class="sources" style="display:none;">
+        <h3>Sources</h3>
+        <div id="sourcesList"></div>
+      </div>
     </div>
 
   </div>
 </div>
 
+<div id="toastStack" class="toast-stack"></div>
+
 <script>
 
 let currentQuery = "";
 let currentReport = "";
+let currentSources = [];
+let loadingInterval = null;
+
+function showToast(message, type){
+  const stack = document.getElementById("toastStack");
+  const el = document.createElement("div");
+  el.className = "toast" + (type ? " " + type : "");
+  el.textContent = message;
+  stack.appendChild(el);
+  setTimeout(() => el.remove(), 3200);
+}
+
+function useChip(el){
+  document.getElementById("query").value = el.textContent;
+  research();
+}
 
 function escapeHtml(str){
   const div = document.createElement("div");
@@ -420,6 +624,52 @@ function formatReport(text){
   return html;
 }
 
+function renderSources(sources){
+  const block = document.getElementById("sourcesBlock");
+  const list = document.getElementById("sourcesList");
+
+  if(!sources || !sources.length){
+    block.style.display = "none";
+    list.innerHTML = "";
+    return;
+  }
+
+  list.innerHTML = sources.map((s, i) => `
+    <a class="source-card" href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer">
+      <div class="source-num">${i + 1}</div>
+      <div class="source-text">
+        <strong>${escapeHtml(s.title || s.url)}</strong>
+        <span>${escapeHtml(s.domain || "")}</span>
+      </div>
+    </a>
+  `).join("");
+
+  block.style.display = "block";
+}
+
+function cycleStatus(){
+  const messages = [
+    "Searching the web...",
+    "Reading sources...",
+    "Synthesizing findings...",
+    "Writing report..."
+  ];
+  let i = 0;
+  const statusEl = document.getElementById("status");
+  statusEl.innerHTML = `<span class="spinner"></span> ${messages[0]}`;
+  loadingInterval = setInterval(() => {
+    i = (i + 1) % messages.length;
+    statusEl.innerHTML = `<span class="spinner"></span> ${messages[i]}`;
+  }, 1600);
+}
+
+function stopCycleStatus(){
+  if(loadingInterval){
+    clearInterval(loadingInterval);
+    loadingInterval = null;
+  }
+}
+
 async function research(){
 
   const queryInput = document.getElementById("query");
@@ -427,17 +677,17 @@ async function research(){
   const statusEl = document.getElementById("status");
   const resultEl = document.getElementById("result");
   const searchBtn = document.getElementById("searchBtn");
-  const emptyHint = document.getElementById("emptyHint");
+  const chips = document.getElementById("chips");
 
   if(!query){
-    statusEl.textContent = "Please enter a topic.";
+    showToast("Please enter a topic.", "error");
     return;
   }
 
   searchBtn.disabled = true;
   resultEl.style.display = "none";
-  emptyHint.style.display = "none";
-  statusEl.innerHTML = '<span class="spinner"></span> Researching...';
+  chips.style.display = "none";
+  cycleStatus();
 
   try{
     const response = await fetch("/research", {
@@ -449,32 +699,54 @@ async function research(){
     const data = await response.json();
 
     if(data.error){
-      statusEl.textContent = data.error;
-      searchBtn.disabled = false;
+      showToast(data.error, "error");
+      chips.style.display = "flex";
       return;
     }
 
     currentQuery = query;
     currentReport = data.report;
+    currentSources = data.sources || [];
+
+    const wordCount = data.report.trim().split(/\\s+/).length;
+    const readMins = Math.max(1, Math.round(wordCount / 200));
 
     document.getElementById("resultTitle").textContent = "Report: " + query;
+    document.getElementById("resultMeta").textContent =
+      `${wordCount} words · ~${readMins} min read · ${currentSources.length} sources`;
     document.getElementById("resultContent").innerHTML = formatReport(data.report);
+    renderSources(currentSources);
+
+    const pdfBtn = document.getElementById("pdfBtn");
+    pdfBtn.className = "";
+    pdfBtn.textContent = "⬇ Download PDF";
+
     resultEl.style.display = "block";
-    statusEl.textContent = "";
+    resultEl.scrollIntoView({ behavior: "smooth", block: "start" });
 
   }catch(err){
-    statusEl.textContent = "Error: " + err;
+    showToast("Something went wrong: " + err, "error");
+    chips.style.display = "flex";
   }finally{
+    stopCycleStatus();
+    document.getElementById("status").innerHTML = "";
     searchBtn.disabled = false;
   }
+}
+
+function newSearch(){
+  document.getElementById("result").style.display = "none";
+  document.getElementById("chips").style.display = "flex";
+  document.getElementById("query").value = "";
+  document.getElementById("query").focus();
 }
 
 function copyReport(){
   if(!currentReport) return;
   navigator.clipboard.writeText(currentReport).then(() => {
-    const statusEl = document.getElementById("status");
-    statusEl.textContent = "Copied to clipboard.";
-    setTimeout(() => statusEl.textContent = "", 1800);
+    showToast("Report copied to clipboard.", "success");
+  }).catch(() => {
+    showToast("Couldn't copy — try selecting the text manually.", "error");
   });
 }
 
@@ -489,8 +761,14 @@ async function downloadPdf(){
     const response = await fetch("/download-pdf", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: currentQuery, report: currentReport })
+      body: JSON.stringify({ query: currentQuery, report: currentReport, sources: currentSources })
     });
+
+    if(response.status === 501){
+      const errData = await response.json();
+      showToast(errData.error || "PDF export is not available on this server.", "error");
+      return;
+    }
 
     if(!response.ok){
       throw new Error("PDF generation failed");
@@ -506,11 +784,18 @@ async function downloadPdf(){
     a.remove();
     window.URL.revokeObjectURL(url);
 
+    pdfBtn.className = "success";
+    pdfBtn.textContent = "✓ PDF ready";
+    showToast("PDF downloaded.", "success");
+    setTimeout(() => {
+      pdfBtn.className = "";
+      pdfBtn.textContent = "⬇ Download PDF";
+    }, 2500);
+
   }catch(err){
-    alert("Could not generate PDF: " + err);
+    showToast("Could not generate PDF: " + err, "error");
   }finally{
     pdfBtn.disabled = false;
-    pdfBtn.textContent = "⬇ Download PDF";
   }
 }
 
@@ -545,6 +830,18 @@ def research():
     if not results:
         return jsonify({"error": "No search results found for that topic."}), 404
 
+    # Real sources taken directly from the search results, not from the
+    # model's own output — this way links are always accurate and clickable.
+    sources = [
+        {
+            "title": r.get("title") or r.get("url"),
+            "url": r.get("url"),
+            "domain": _domain(r.get("url")),
+        }
+        for r in results
+        if r.get("url")
+    ]
+
     search_text = ""
 
     for r in results:
@@ -567,13 +864,13 @@ Research Topic:
 Search Results:
 {search_text}
 
-Generate:
+Generate a report with these sections only:
 
 1. Summary
 
 2. Key Findings
 
-3. Sources
+Do not include a Sources section — sources will be listed separately.
 """
 
     try:
@@ -594,7 +891,8 @@ Generate:
             }), 502
 
         return jsonify({
-            "report": report_text
+            "report": report_text,
+            "sources": sources,
         })
 
     except Exception as e:
@@ -610,12 +908,19 @@ def download_pdf():
 
     query = (data.get("query") or "Research Report").strip()
     report_text = (data.get("report") or "").strip()
+    sources = data.get("sources") or []
 
     if not report_text:
         return jsonify({"error": "No report content to export."}), 400
 
+    if not FPDF_AVAILABLE:
+        return jsonify({
+            "error": "PDF export isn't available: the 'fpdf2' package is not "
+                     "installed on the server. Run: pip install fpdf2"
+        }), 501
+
     try:
-        pdf_bytes = build_pdf(query, report_text)
+        pdf_bytes = build_pdf(query, report_text, sources)
     except Exception as e:
         return jsonify({"error": f"PDF generation failed: {e}"}), 500
 
