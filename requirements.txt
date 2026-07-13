@@ -3,3 +3,4 @@ gunicorn==23.0.0
 google-genai==1.27.0
 tavily-python==0.7.10
 python-dotenv==1.0.1
+fpdf2>=2.8.0
