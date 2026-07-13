@@ -18,6 +18,7 @@ load_dotenv()
 
 app = Flask(__name__)
 
+# Use standard environment variable checks
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
@@ -371,13 +372,13 @@ function renderSources(sources){
 }
 
 function cycleStatus(){
-  const messages = ["Searching the web...", "Reading sources...", "Synthesizing findings...", "Writing report..."];
+  const messages = ["Searching for data...", "Analyzing context...", "Structuring content...", "Finalizing report..."];
   let i = 0;
   const statusEl = document.getElementById("status");
-  statusEl.innerHTML = `<span class="spinner"></span> \${messages[0]}`;
+  statusEl.innerHTML = '<span class="spinner"></span> ' + messages[0];
   loadingInterval = setInterval(() => {
     i = (i + 1) % messages.length;
-    statusEl.innerHTML = `<span class="spinner"></span> \${messages[i]}`;
+    statusEl.innerHTML = '<span class="spinner"></span> ' + messages[i];
   }, 1600);
 }
 
@@ -417,7 +418,7 @@ async function research(){
     const wordCount = data.report.trim().split(/\\s+/).length;
     const readMins = Math.max(1, Math.round(wordCount / 200));
     document.getElementById("resultTitle").textContent = "Report: " + query;
-    document.getElementById("resultMeta").textContent = `\${wordCount} words · ~\\${readMins} min read · \${currentSources.length} sources`;
+    document.getElementById("resultMeta").textContent = `${wordCount} words · ~${readMins} min read · ${currentSources.length} sources`;
     document.getElementById("resultContent").innerHTML = formatReport(data.report);
     renderSources(currentSources);
     resultEl.style.display = "block";
@@ -467,7 +468,7 @@ async function downloadPdf(){
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `research-report-\${currentQuery.slice(0,30).replace(/[^a-z0-9]+/gi,"-")}.pdf`;
+    a.download = `research-report-${currentQuery.slice(0,30).replace(/[^a-z0-9]+/gi,"-")}.pdf`;
     document.body.appendChild(a);
     a.click();
     a.remove();
