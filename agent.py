@@ -1,12 +1,12 @@
 import io
 import re
 from datetime import datetime
-import os
 
 from flask import Flask, request, jsonify, send_file
 from dotenv import load_dotenv
 from tavily import TavilyClient
 from google import genai
+import os
 
 try:
     from fpdf import FPDF
@@ -18,7 +18,6 @@ load_dotenv()
 
 app = Flask(__name__)
 
-# Make sure you set these in your .env file or hosting provider dashboard
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
@@ -60,17 +59,17 @@ def build_pdf(query: str, report_text: str, sources: list) -> bytes:
     # Title
     pdf.set_font("Helvetica", "B", 18)
     pdf.set_text_color(79, 70, 229)  # #4f46e5
-    pdf.multi_cell(0, 10, text=_sanitize_pdf_text("Research Report"))
+    pdf.multi_cell(0, 10, _sanitize_pdf_text("Research Report"))
     pdf.ln(1)
 
     # Query subtitle
     pdf.set_font("Helvetica", "I", 12)
     pdf.set_text_color(90, 90, 90)
-    pdf.multi_cell(0, 7, text=_sanitize_pdf_text(f"Topic: {query}"))
+    pdf.multi_cell(0, 7, _sanitize_pdf_text(f"Topic: {query}"))
 
     pdf.set_font("Helvetica", "", 9)
     pdf.set_text_color(140, 140, 140)
-    pdf.multi_cell(0, 6, text=_sanitize_pdf_text(
+    pdf.multi_cell(0, 6, _sanitize_pdf_text(
         f"Generated {datetime.now().strftime('%B %d, %Y at %I:%M %p')}"
     ))
     pdf.ln(4)
@@ -92,24 +91,24 @@ def build_pdf(query: str, report_text: str, sources: list) -> bytes:
             pdf.set_font("Helvetica", "B", 13)
             pdf.set_text_color(79, 70, 229)
             pdf.ln(2)
-            pdf.multi_cell(0, 8, text=re.sub(r"\*\*(.*?)\*\*", r"\1", heading_match.group(1)))
+            pdf.multi_cell(0, 8, re.sub(r"\*\*(.*?)\*\*", r"\1", heading_match.group(1)))
             pdf.set_text_color(20, 20, 20)
             pdf.ln(1)
         elif bullet_match:
             pdf.set_font("Helvetica", "", 11)
             text = re.sub(r"\*\*(.*?)\*\*", r"\1", bullet_match.group(1))
-            pdf.multi_cell(0, 7, text=f"  -  {text}")
+            pdf.multi_cell(0, 7, f"  -  {text}")
         else:
             pdf.set_font("Helvetica", "", 11)
             text = re.sub(r"\*\*(.*?)\*\*", r"\1", line)
-            pdf.multi_cell(0, 7, text=text)
+            pdf.multi_cell(0, 7, text)
 
     # Sources — rendered from real search results, not model output
     if sources:
         pdf.ln(3)
         pdf.set_font("Helvetica", "B", 13)
         pdf.set_text_color(79, 70, 229)
-        pdf.multi_cell(0, 8, text="Sources")
+        pdf.multi_cell(0, 8, "Sources")
         pdf.set_text_color(20, 20, 20)
         pdf.ln(1)
 
@@ -118,17 +117,17 @@ def build_pdf(query: str, report_text: str, sources: list) -> bytes:
             url = _sanitize_pdf_text(s.get("url", ""))
 
             pdf.set_font("Helvetica", "B", 10.5)
-            pdf.multi_cell(0, 6.5, text=f"{i}. {title}")
+            pdf.multi_cell(0, 6.5, f"{i}. {title}")
 
             pdf.set_font("Helvetica", "", 9.5)
             pdf.set_text_color(37, 99, 235)
-            pdf.multi_cell(0, 6, text=url, link=url)
+            start_y = pdf.get_y()
+            pdf.multi_cell(0, 6, url, link=url)
             pdf.set_text_color(20, 20, 20)
             pdf.ln(0.5)
 
-    # In modern fpdf2, calling output() with no parameters returns raw binary bytes
-    pdf_bytes = pdf.output()
-    return bytes(pdf_bytes)
+    output = pdf.output()
+    return bytes(output)
 
 
 def _domain(url: str) -> str:
@@ -151,6 +150,7 @@ def home():
 <title>Research Agent</title>
 
 <style>
+
 *{box-sizing:border-box;}
 
 :root{
@@ -463,6 +463,13 @@ button.success{
   font-size:12px;
 }
 
+.empty-hint{
+  text-align:center;
+  color:#9ca3af;
+  font-size:13.5px;
+  margin-top:6px;
+}
+
 .toast-stack{
   position:fixed;
   bottom:22px;
@@ -496,17 +503,21 @@ button.success{
   .search-row{flex-direction:column;}
   .result-toolbar{flex-direction:column;}
 }
+
 </style>
 </head>
 
 <body>
+
 <div class="wrap">
+
   <div class="header">
     <h1>🔍 Research Agent</h1>
     <p>AI-powered web research — search any topic and get a structured report</p>
   </div>
 
   <div class="card">
+
     <div class="search-row">
       <div class="search-box">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -545,12 +556,14 @@ button.success{
         <div id="sourcesList"></div>
       </div>
     </div>
+
   </div>
 </div>
 
 <div id="toastStack" class="toast-stack"></div>
 
 <script>
+
 let currentQuery = "";
 let currentReport = "";
 let currentSources = [];
@@ -577,8 +590,7 @@ function escapeHtml(str){
 }
 
 function formatReport(text){
-  // CHANGED: split on simple single newline \n from standard json transfer
-  const lines = text.split("\n");
+  const lines = text.split("\\n");
   let html = "";
   let inList = false;
 
@@ -590,20 +602,20 @@ function formatReport(text){
       continue;
     }
 
-    const headingMatch = line.match(/^#{1,3}\s+(.*)/) || line.match(/^\d+\.\s+(.*)/);
-    const bulletMatch = line.match(/^[-*]\s+(.*)/);
+    const headingMatch = line.match(/^#{1,3}\\s+(.*)/) || line.match(/^\\d+\\.\\s+(.*)/);
+    const bulletMatch = line.match(/^[-*]\\s+(.*)/);
 
     if(headingMatch && line.length < 80){
       if(inList){ html += "</ul>"; inList = false; }
-      const content = escapeHtml(headingMatch[1]).replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+      const content = escapeHtml(headingMatch[1]).replace(/\\*\\*(.*?)\\*\\*/g, "<strong>$1</strong>");
       html += `<h3>${content}</h3>`;
     } else if(bulletMatch){
       if(!inList){ html += "<ul>"; inList = true; }
-      const content = escapeHtml(bulletMatch[1]).replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+      const content = escapeHtml(bulletMatch[1]).replace(/\\*\\*(.*?)\\*\\*/g, "<strong>$1</strong>");
       html += `<li>${content}</li>`;
     } else {
       if(inList){ html += "</ul>"; inList = false; }
-      const content = escapeHtml(line).replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+      const content = escapeHtml(line).replace(/\\*\\*(.*?)\\*\\*/g, "<strong>$1</strong>");
       html += `<p>${content}</p>`;
     }
   }
@@ -659,6 +671,7 @@ function stopCycleStatus(){
 }
 
 async function research(){
+
   const queryInput = document.getElementById("query");
   const query = queryInput.value.trim();
   const statusEl = document.getElementById("status");
@@ -695,7 +708,7 @@ async function research(){
     currentReport = data.report;
     currentSources = data.sources || [];
 
-    const wordCount = data.report.trim().split(/\s+/).length;
+    const wordCount = data.report.trim().split(/\\s+/).length;
     const readMins = Math.max(1, Math.round(wordCount / 200));
 
     document.getElementById("resultTitle").textContent = "Report: " + query;
@@ -785,7 +798,9 @@ async function downloadPdf(){
     pdfBtn.disabled = false;
   }
 }
+
 </script>
+
 </body>
 </html>
 """
@@ -793,7 +808,9 @@ async function downloadPdf(){
 
 @app.route("/research", methods=["POST"])
 def research():
+
     data = request.get_json(silent=True) or {}
+
     query = (data.get("query") or "").strip()
 
     if not query:
@@ -813,6 +830,8 @@ def research():
     if not results:
         return jsonify({"error": "No search results found for that topic."}), 404
 
+    # Real sources taken directly from the search results, not from the
+    # model's own output — this way links are always accurate and clickable.
     sources = [
         {
             "title": r.get("title") or r.get("url"),
@@ -824,10 +843,20 @@ def research():
     ]
 
     search_text = ""
-    for r in results:
-        search_text += f"Title: {r.get('title')}\nURL: {r.get('url')}\nContent:\n{r.get('content')}\n\n"
 
-    prompt = f"""You are an expert research analyst.
+    for r in results:
+        search_text += f"""
+Title: {r.get('title')}
+
+URL: {r.get('url')}
+
+Content:
+{r.get('content')}
+
+"""
+
+    prompt = f"""
+You are an expert research analyst.
 
 Research Topic:
 {query}
@@ -846,7 +875,7 @@ Do not include a Sources section — sources will be listed separately.
 
     try:
         response = gemini.models.generate_content(
-            model="gemini-flash-latest",
+            model="gemini-2.5-flash",
             contents=prompt
         )
 
@@ -863,11 +892,14 @@ Do not include a Sources section — sources will be listed separately.
         })
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 502
+        return jsonify({
+            "error": str(e)
+        }), 502
 
 
 @app.route("/download-pdf", methods=["POST"])
 def download_pdf():
+
     data = request.get_json(silent=True) or {}
 
     query = (data.get("query") or "Research Report").strip()
