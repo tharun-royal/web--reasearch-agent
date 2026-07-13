@@ -32,7 +32,7 @@ tavily = TavilyClient(api_key=TAVILY_API_KEY)
 
 
 # ---------------------------------------------------------------------------
-# PDF generation helpers (Patched to prevent crashes)
+# PDF generation helpers (Patched for layout and encoding safety)
 # ---------------------------------------------------------------------------
 
 def _sanitize_pdf_text(text: str) -> str:
@@ -63,23 +63,26 @@ def build_pdf(query: str, report_text: str, sources: list) -> bytes:
     pdf.set_auto_page_break(auto=True, margin=18)
     pdf.add_page()
 
+    # Define explicit horizontal constraint using effective page width
+    effective_width = pdf.epw
+
     # Title Banner
     pdf.set_font("Helvetica", "B", 18)
     pdf.set_text_color(79, 70, 229)  # #4f46e5
-    pdf.multi_cell(0, 10, _sanitize_pdf_text("Research Report"))
-    pdf.ln(1)
+    pdf.multi_cell(effective_width, 10, _sanitize_pdf_text("Research Report"))
+    pdf.ln(2)
 
     # Subtitle Context
     pdf.set_font("Helvetica", "I", 12)
     pdf.set_text_color(90, 90, 90)
-    pdf.multi_cell(0, 7, _sanitize_pdf_text(f"Topic: {query}"))
+    pdf.multi_cell(effective_width, 7, _sanitize_pdf_text(f"Topic: {query}"))
 
     pdf.set_font("Helvetica", "", 9)
     pdf.set_text_color(140, 140, 140)
-    pdf.multi_cell(0, 6, _sanitize_pdf_text(
+    pdf.multi_cell(effective_width, 6, _sanitize_pdf_text(
         f"Generated {datetime.now().strftime('%B %d, %Y at %I:%M %p')}"
     ))
-    pdf.ln(4)
+    pdf.ln(6)
 
     # Body Parsing Block
     pdf.set_text_color(20, 20, 20)
@@ -88,7 +91,7 @@ def build_pdf(query: str, report_text: str, sources: list) -> bytes:
         line = raw_line.strip()
 
         if not line:
-            pdf.ln(2)
+            pdf.ln(3)
             continue
 
         # Check formatting indicators explicitly using isolated regex lookups
@@ -100,35 +103,35 @@ def build_pdf(query: str, report_text: str, sources: list) -> bytes:
         clean_line = re.sub(r"\*\*(.*?)\*\*", r"\1", line)
 
         if heading_match and len(line) < 100:
-            pdf.set_font("Helvetica", "B", 13)
+            pdf.set_font("Helvetica", "B", 14)
             pdf.set_text_color(79, 70, 229)
-            pdf.ln(2)
+            pdf.ln(3)
             heading_text = re.sub(r"\*\*(.*?)\*\*", r"\1", heading_match.group(1))
-            pdf.multi_cell(0, 8, _sanitize_pdf_text(heading_text))
+            pdf.multi_cell(effective_width, 8, _sanitize_pdf_text(heading_text))
             pdf.set_text_color(20, 20, 20)
-            pdf.ln(1)
+            pdf.ln(2)
             
         elif numbered_match:
             pdf.set_font("Helvetica", "B", 11)
-            pdf.multi_cell(0, 7, _sanitize_pdf_text(clean_line))
+            pdf.multi_cell(effective_width, 7, _sanitize_pdf_text(clean_line))
             
         elif bullet_match:
             pdf.set_font("Helvetica", "", 11)
             bullet_text = re.sub(r"\*\*(.*?)\*\*", r"\1", bullet_match.group(1))
-            pdf.multi_cell(0, 7, _sanitize_pdf_text(f"  -  {bullet_text}"))
+            pdf.multi_cell(effective_width, 7, _sanitize_pdf_text(f"  -  {bullet_text}"))
             
         else:
             pdf.set_font("Helvetica", "", 11)
-            pdf.multi_cell(0, 7, _sanitize_pdf_text(clean_line))
+            pdf.multi_cell(effective_width, 7, _sanitize_pdf_text(clean_line))
 
     # Sources Block
     if sources:
-        pdf.ln(4)
-        pdf.set_font("Helvetica", "B", 13)
+        pdf.ln(6)
+        pdf.set_font("Helvetica", "B", 14)
         pdf.set_text_color(79, 70, 229)
-        pdf.multi_cell(0, 8, "Sources")
+        pdf.multi_cell(effective_width, 8, "Sources")
         pdf.set_text_color(20, 20, 20)
-        pdf.ln(1)
+        pdf.ln(2)
 
         for i, s in enumerate(sources, 1):
             if not isinstance(s, dict):
@@ -137,15 +140,15 @@ def build_pdf(query: str, report_text: str, sources: list) -> bytes:
             title_str = str(s.get("title") or s.get("url") or f"Source {i}")
             url_str = str(s.get("url") or "")
 
-            pdf.set_font("Helvetica", "B", 10.5)
-            pdf.multi_cell(0, 6.5, _sanitize_pdf_text(f"{i}. {title_str}"))
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.multi_cell(effective_width, 6.5, _sanitize_pdf_text(f"{i}. {title_str}"))
 
             if url_str:
                 pdf.set_font("Helvetica", "", 9.5)
                 pdf.set_text_color(37, 99, 235)
-                pdf.multi_cell(0, 6, _sanitize_pdf_text(url_str), link=url_str)
+                pdf.multi_cell(effective_width, 6, _sanitize_pdf_text(url_str), link=url_str)
                 pdf.set_text_color(20, 20, 20)
-                pdf.ln(1)
+                pdf.ln(2)
 
     return bytes(pdf.output())
 
